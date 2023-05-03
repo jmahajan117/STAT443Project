@@ -1,0 +1,157 @@
+---
+title: "STAT 443 Final Project"
+author: "Nico Lavalle - lavalle4"
+date: "2023-03-06"
+output: html_document
+---
+
+```{r}
+#loading in data
+bike_data = read.csv("winterdataday.csv")
+bike_data_demand = read.csv("low_middle_high.csv")$demand
+```
+
+```{r}
+#creating demand variable
+bike_data$demand = bike_data_demand
+```
+
+```{r}
+#loading dataset
+bike_data2 = subset(bike_data, select = -c(X, X.1))
+bike_data2
+```
+
+```{r}
+#distribution of bike counts
+hist(bike_data2$Count, breaks = 100, main = "Distribution of Bike Counts", xlab = "Bike Count", col = "steelblue")
+```
+
+```{r}
+#train/test split
+set.seed(673725096)
+idx = sample(1:nrow(bike_data2), 1500, replace = FALSE)
+bike_train = bike_data2[idx,]
+bike_test = bike_data2[-idx,]
+```
+
+```{r}
+library(randomForest)
+```
+
+```{r}
+#factorizing demand and generating full random forest
+bike_train$demand = as.factor(bike_train$demand)
+bike_test$demand = as.factor(bike_test$demand)
+rf.fit.class = randomForest(demand ~ . -Date -Dew_Point -Count, data = bike_train, importance = TRUE)
+```
+
+```{r}
+#full model importances
+rf.fit.class$importance
+```
+
+
+```{r}
+library(caret)
+```
+
+```{r}
+#storing importances of full model
+imp.class = importance(rf.fit.class)
+imp.class
+```
+
+```{r}
+#sorting variables by importance
+sorted_imp.class = sort(imp.class[,1], decreasing = TRUE)
+vars.class = names(sorted_imp.class)
+vars.class
+```
+
+```{r}
+#iterating through important variables and number of variables considered at each split
+set.seed(4)
+accuracy = 0
+MTRY = 1
+for (i in 1:length(vars.class)){
+  for (j in 1:i){
+    
+    rf.fit.class = randomForest(x = bike_train[vars.class[1:i]], y = bike_train$demand, importance = TRUE, mtry = j)
+  
+    confusion_mat = as.matrix(table(Actual_Values = bike_test$demand, Predicted_Values = predict(rf.fit.class, bike_test))) 
+    accuracy_loop = (confusion_mat[1,1] + confusion_mat[2,2] + confusion_mat[3,3]) / nrow(bike_test)
+  
+    if (accuracy == 0 | accuracy < accuracy_loop){
+      accuracy = accuracy_loop
+      MTRY = j
+      num_vars = i
+      rf.final.class = rf.fit.class
+    }
+  }
+}
+```
+
+```{r}
+#final values of looped variables
+accuracy
+accuracy_loop
+MTRY
+num_vars
+i
+```
+
+```{r}
+#final model object
+rf.final.class
+```
+```{r}
+#confusion matrix
+as.matrix(table(Actual_Values = bike_test$demand, Predicted_Values = predict(rf.final.class, bike_test)))
+```
+
+```{r}
+#final importance
+importance(rf.final.class)
+```
+
+```{r}
+#average counts by hour
+hour_counts = NULL
+for (i in 1:length(unique(bike_data2$Hour))){
+  hour_counts[i] = mean(bike_data2$Count[bike_data2$Hour == i-1])
+}
+```
+
+```{r}
+hour_counts
+```
+```{r}
+#average counts by day
+day_counts = NULL
+for (i in 1:length(unique(bike_data2$Day))){
+  day_counts[i] = mean(bike_data2$Count[bike_data2$Day == i])
+}
+```
+
+```{r}
+day_counts
+```
+
+```{r}
+hours = seq(0, 23)
+days = seq(1, 7)
+```
+
+```{r}
+#hour plot
+plot(hours, hour_counts, type = "l", col = "steelblue", lwd = 2, ylab = "Average Number of Bikes Rented", xlab = "Hour of Day", main = "Average Number of Bikes Rented by Hour of Day")
+```
+
+```{r}
+#day plot
+plot(days, day_counts, type = "l", col = "steelblue", lwd = 2, ylab = "Average Number of Bikes Rented", xlab = "Day of Week", main = "Average Number of Bikes Rented by Day of Week", axes = FALSE)
+axis(2)
+axis(1, at=seq_along(day_counts),labels=c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"), las=2)
+box()
+```
